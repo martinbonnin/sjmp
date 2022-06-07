@@ -3,7 +3,7 @@ plugins {
     id("java-gradle-plugin")
     id("com.gradleup.gr8.external").version("0.5") // only for removeGradleApiFromApi
     id("org.jetbrains.kotlin.plugin.sam.with.receiver")
-    id("net.mbonnin.sjmp")
+    id("maven-publish")
 }
 
 repositories {
@@ -35,14 +35,6 @@ gradlePlugin {
 
 samWithReceiver {
     annotation("org.gradle.api.HasImplicitReceiver")
-}
-
-sjmp {
-    configureAllPublications {
-        pomGithubRepository = "martinbonnin/sjmp"
-        pomLicense = "MIT License"
-        pomGithubLicensePath = "blob/main/LICENSE"
-    }
 }
 
 tasks.withType(JavaCompile::class.java).configureEach {
