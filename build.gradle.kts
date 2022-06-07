@@ -48,14 +48,6 @@ samWithReceiver {
     annotation("org.gradle.api.HasImplicitReceiver")
 }
 
-//sjmp {
-//    configureAllPublications {
-//        pomGithubRepository = "martinbonnin/sjmp"
-//        pomLicense = "MIT License"
-//        pomGithubLicensePath = "blob/main/LICENSE"
-//    }
-//}
-
 tasks.withType(JavaCompile::class.java).configureEach {
     options.release.set(8)
 }

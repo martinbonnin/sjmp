@@ -95,20 +95,6 @@ interface DefaultPublicationConfig {
     var pomDevelopers: String?
 
     /**
-     * The sonatype subdomain to use. Use "s01" for the new host
-     *
-     * Default: no subdomain
-     */
-    var sonatypeSubDomain: String?
-
-    /**
-     * The branch to use for SNAPSHOTs
-     *
-     * Default: "main"
-     */
-    var snapshotsBranch: String?
-
-    /**
      * Configures the pom manually, overrides all the properties that start with "pom"
      */
     fun pom(action: Action<MavenPom>)
@@ -124,8 +110,6 @@ private class DefaultPublicationConfigImpl : DefaultPublicationConfig {
     override var pomName: String? = null
     override var pomDescription: String? = null
     override var pomDevelopers: String? = null
-    override var sonatypeSubDomain: String? = null
-    override var snapshotsBranch: String? = null
 
     var pomAction: Action<MavenPom>? = null
 
@@ -135,67 +119,64 @@ private class DefaultPublicationConfigImpl : DefaultPublicationConfig {
 }
 
 open class SjmpExtension(val project: Project) {
-    private fun createDefaultPublication(config: DefaultPublicationConfigImpl) {
-        val publishing = project.extensions.getByType(PublishingExtension::class.java)
-        publishing.apply {
-            publications {
-                create("default", MavenPublication::class.java) {
-                    val lArtifactId = config.artifactId ?: project.name
-                    val lGroupId = config.groupId ?: project.group.toString().takeIf { it.isNotBlank() }
-                    ?: error("group is required")
-                    val lVersion = config.version ?: project.version.toString()
-                    val lPomName = config.pomName ?: lArtifactId
-                    val lPomDescription = config.pomDescription ?: lArtifactId
-                    val lPomAuthors = config.pomDevelopers ?: "$lPomName authors"
-                    val lGithubRepository = config.pomGithubRepository ?: error("githubRepository is required")
-                    val lGithubLicensePath = config.pomGithubLicensePath ?: error("githubLicensePath is required")
+    private fun configurePublication(mavenPublication: MavenPublication, config: DefaultPublicationConfigImpl) {
+        with(mavenPublication) {
+            val lArtifactId = config.artifactId ?: project.name
+            val lGroupId = config.groupId ?: project.group.toString().takeIf { it.isNotBlank() }
+            ?: error("group is required")
+            val lVersion = config.version ?: project.version.toString()
+            val lPomName = config.pomName ?: lArtifactId
+            val lPomDescription = config.pomDescription ?: lArtifactId
+            val lPomAuthors = config.pomDevelopers ?: "$lPomName authors"
+            val lGithubRepository = config.pomGithubRepository ?: error("githubRepository is required")
+            val lGithubLicensePath = config.pomGithubLicensePath ?: error("githubLicensePath is required")
 
-                    from(project.components.findByName("java"))
+            artifactId = lArtifactId
+            groupId = lGroupId
+            version = lVersion
 
-                    artifact(project.tasks.named("emptyJavadocJar"))
-                    artifact(project.tasks.named("sourcesJar"))
+            if (config.pomAction != null) {
+                pom(config.pomAction!!)
+            } else {
+                pom {
+                    name.set(lPomName)
+                    description.set(lPomDescription)
 
-                    artifactId = lArtifactId
-                    groupId = lGroupId
-                    version = lVersion
+                    val githubUrl = "https://github.com/$lGithubRepository"
 
-                    if (config.pomAction != null) {
-                        pom(config.pomAction!!)
-                    } else {
-                        pom {
-                            name.set(lPomName)
-                            description.set(lPomDescription)
+                    url.set(githubUrl)
 
-                            val githubUrl = "https://github.com/$lGithubRepository"
+                    scm {
+                        url.set(githubUrl)
+                        connection.set(githubUrl)
+                        developerConnection.set(githubUrl)
+                    }
 
-                            url.set(githubUrl)
+                    licenses {
+                        license {
+                            name.set(config.pomLicense)
+                            url.set("$githubUrl/$lGithubLicensePath")
+                        }
+                    }
 
-                            scm {
-                                url.set(githubUrl)
-                                connection.set(githubUrl)
-                                developerConnection.set(githubUrl)
-                            }
-
-                            licenses {
-                                license {
-                                    name.set(config.pomLicense)
-                                    url.set("$githubUrl/$lGithubLicensePath")
-                                }
-                            }
-
-                            developers {
-                                developer {
-                                    id.set(lPomAuthors)
-                                    name.set(lPomAuthors)
-                                }
-                            }
+                    developers {
+                        developer {
+                            id.set(lPomAuthors)
+                            name.set(lPomAuthors)
                         }
                     }
                 }
             }
+        }
+    }
 
+    /**
+     * @param sonatypeSubDomain The sonatype subdomain to use. Use "s01" for the new host or use null for the default
+     */
+    fun configureRepositories(sonatypeSubDomain: String? = null) {
+        project.publishing.apply {
             repositories {
-                val extra = config.sonatypeSubDomain?.let { "$it." } ?: ""
+                val extra = sonatypeSubDomain?.let { "$it." } ?: ""
 
                 maven {
                     name = "ossSnapshots"
@@ -215,18 +196,22 @@ open class SjmpExtension(val project: Project) {
                 }
             }
         }
+    }
 
+    fun configureSigning() {
         project.extensions.getByType(SigningExtension::class.java).apply {
             useInMemoryPgpKeys(System.getenv("GPG_PRIVATE_KEY"), System.getenv("GPG_PRIVATE_KEY_PASSWORD"))
-            sign(publishing.publications)
+            sign(project.publishing.publications)
         }
 
         project.tasks.withType(Sign::class.java).configureEach {
             isEnabled = !System.getenv("GPG_PRIVATE_KEY").isNullOrBlank()
         }
+    }
 
+    fun configureGithubActions(snapshotsBranch: String? = null) {
         project.sjmpTask().configure {
-            if (shouldPublishSnapshots(config.snapshotsBranch ?: "main")) {
+            if (shouldPublishSnapshots(snapshotsBranch ?: "main")) {
                 dependsOn(project.tasks.named("publishAllPublicationsToOssSnapshotsRepository"))
             }
             if (isTag()) {
@@ -235,9 +220,12 @@ open class SjmpExtension(val project: Project) {
         }
     }
 
+    private val Project.publishing: PublishingExtension
+        get() = extensions.getByType(PublishingExtension::class.java)
+
     private fun Project.sjmpTask(): TaskProvider<out Task> {
         val rootTask = try {
-            rootProject.tasks.named("sjmpPublishIfNeeded")
+            rootProject.tasks.named("publishFromGithubActionsIfNeeded")
         } catch (e: Exception) {
             null
         }
@@ -247,7 +235,6 @@ open class SjmpExtension(val project: Project) {
         }
 
         return rootProject.tasks.register("sjmpPublishIfNeeded", DefaultTask::class.java)
-
     }
 
     private fun shouldPublishSnapshots(snapshotsBranch: String): Boolean {
@@ -263,10 +250,74 @@ open class SjmpExtension(val project: Project) {
         return ref?.startsWith("refs/tags/") == true
     }
 
-    fun createDefaultPublication(action: Action<DefaultPublicationConfig>) {
+    fun createJvmPublication(action: Action<DefaultPublicationConfig>) {
         val config = DefaultPublicationConfigImpl()
         action.execute(config)
-        createDefaultPublication(config)
+
+        project.publishing.apply {
+            publications {
+                create("default", MavenPublication::class.java) {
+                    from(project.components.findByName("java"))
+
+                    artifact(project.tasks.named("emptyJavadocJar"))
+                    artifact(project.tasks.named("sourcesJar"))
+
+                    configurePublication(this, config)
+                }
+            }
+        }
     }
+
+    fun configurePublication(name: String, action: Action<DefaultPublicationConfig>) {
+        val config = DefaultPublicationConfigImpl()
+        action.execute(config)
+
+        project.publishing.apply {
+            publications.getByName(name) {
+                this as MavenPublication
+                configurePublication(this, config)
+            }
+        }
+    }
+
+    fun configureAllPublications(action: Action<DefaultPublicationConfig>) {
+        val config = DefaultPublicationConfigImpl()
+        action.execute(config)
+
+        project.publishing.apply {
+            publications.configureEach {
+                this as MavenPublication
+                configurePublication(this, config)
+            }
+        }
+    }
+
+    fun configureJvmProject(
+        sonatypeSubDomain: String? = null,
+        snapshotsBranch: String? = null,
+        action: Action<DefaultPublicationConfig>
+    ) {
+        createJvmPublication(action)
+        configureRepositories(sonatypeSubDomain)
+        configureSigning()
+        configureGithubActions(snapshotsBranch)
+
+        val config = DefaultPublicationConfigImpl()
+        action.execute(config)
+
+        project.publishing.apply {
+            publications {
+                create("default", MavenPublication::class.java) {
+                    from(project.components.findByName("java"))
+
+                    artifact(project.tasks.named("emptyJavadocJar"))
+                    artifact(project.tasks.named("sourcesJar"))
+
+                    configurePublication(this, config)
+                }
+            }
+        }
+    }
+
 }
 
