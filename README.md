@@ -13,8 +13,19 @@ plugins {
 }
 
 sjmp {
-    
+    jvmProject {
+        publication {
+            groupId = "net.mbonnin.xoxo"
+            version = "0.2-SNAPSHOT"
+            simplePom {
+                githubRepository = "martinbonnin/xoxo"
+                githubLicensePath = "LICENSE"
+                license = "MIT License"
+            }
+        }
+    }
 }
+
 ```
 
 ## Environment variables
