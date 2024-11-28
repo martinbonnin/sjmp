@@ -1,3 +1,5 @@
+# This project is deprecated, use https://github.com/GradleUp/librarian instead
+
 # SJMP (Simple Java Maven Publish)
 
 A small opinionated Gradle plugin to automate publishing of a simple JVM only project.
